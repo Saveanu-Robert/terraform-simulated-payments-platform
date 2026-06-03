@@ -54,7 +54,7 @@ modules/                 # 10 reusable, single-responsibility simulated modules
 environments/            # one root module (composition) per environment
   dev/  staging/  prod/  #   each: *.tf + terraform.tfvars + tests/
 generated/               # JSON artifacts written by `apply` (gitignored)
-.github/workflows/       # CI: fmt, tflint, validate, test, plan
+.github/workflows/       # terraform.yml (CI on push/PR) + e2e-demo.yml (one-click manual demo)
 ```
 
 Each module is `main.tf` / `variables.tf` / `outputs.tf` / `versions.tf` plus a
@@ -107,6 +107,15 @@ terraform fmt -recursive
 tflint --recursive --config "$PWD/.tflint.hcl"
 ```
 
+### One-click end-to-end demo (no local setup)
+
+Want to watch the whole platform stand up without installing anything? In
+GitHub, open **Actions → "E2E Demo (manual)" → Run workflow** (leave
+`environment` set to `all`, then press the button). It runs the full lifecycle
+for each environment — `apply` the entire stack, print outputs/state/generated
+manifests, demonstrate drift detection, then `destroy` — and posts a summary
+table to the run page. All simulated; no credentials, no cost.
+
 ## The application model
 
 A single typed `applications` map (in `environments/<env>/variables.tf`) drives
@@ -155,3 +164,7 @@ strictest rules.
   never secret values — because Terraform state is not a secret store.
 - **CI** (`.github/workflows/terraform.yml`) runs `fmt`, `tflint`, `validate`,
   `test`, and `plan` for all modules and environments on every push/PR.
+- **One-click demo** (`.github/workflows/e2e-demo.yml`) is a manually-triggered
+  workflow (Actions → *E2E Demo (manual)* → *Run workflow*) that applies the full
+  platform, prints outputs/state/generated manifests, demonstrates drift
+  detection, and destroys it — all simulated, end to end.
