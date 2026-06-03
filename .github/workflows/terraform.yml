@@ -7,7 +7,9 @@ on:
       - main
 
 # No real infrastructure is created, so no cloud credentials are required.
-# Every step uses -backend=false and the simulated providers (random, local).
+# Modules carry no backend, so they init with -backend=false. Environments use a
+# local backend (no credentials needed), so they run a normal `terraform init`
+# — required for `terraform plan` to work.
 
 permissions:
   contents: read
@@ -85,7 +87,7 @@ jobs:
           terraform_version: "1.15.5"
       - name: Init
         working-directory: environments/${{ matrix.environment }}
-        run: terraform init -backend=false
+        run: terraform init -input=false
       - name: Validate
         working-directory: environments/${{ matrix.environment }}
         run: terraform validate
