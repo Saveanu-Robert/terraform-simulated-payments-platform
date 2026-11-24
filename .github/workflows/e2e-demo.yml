@@ -1,0 +1,118 @@
+name: E2E Demo (manual)
+
+# One-click, manually-triggered end-to-end demo of the simulated payments
+# platform. For each selected environment it stands up the WHOLE stack with a
+# real `terraform apply`, shows what it built (outputs + state + generated
+# manifest files), proves drift detection, then tears it all down with
+# `terraform destroy`.
+#
+# Everything is simulated (terraform_data / random / local_file), so there are
+# no cloud credentials, no real infrastructure, and no cost.
+#
+# How to run: GitHub → Actions tab → "E2E Demo (manual)" → "Run workflow".
+# Leave "environment" as "all" and press the green button. That's it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Which environment(s) to demo"
+        type: choice
+        default: all
+        options:
+          - all
+          - dev
+          - staging
+          - prod
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-demo:
+    name: E2E simulation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.5"
+
+      - name: Run end-to-end simulation
+        env:
+          CHOICE: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+
+          if [ "$CHOICE" = "all" ]; then envs="dev staging prod"; else envs="$CHOICE"; fi
+
+          {
+            echo "# 🎬 E2E Simulation Demo"
+            echo "_Fake infrastructure, real Terraform — no cloud, no credentials, no cost._"
+            echo ""
+            echo "| Environment | Resources created | Manifests generated | Lifecycle |"
+            echo "|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for env in $envs; do
+            echo "=============================================================="
+            echo " ENVIRONMENT: $env"
+            echo "=============================================================="
+            cd "environments/$env"
+
+            echo "::group::🛠️  $env — terraform init"
+            terraform init -input=false
+            echo "::endgroup::"
+
+            echo "::group::🚀 $env — terraform apply (stand up the whole platform)"
+            terraform apply -auto-approve -input=false
+            echo "::endgroup::"
+
+            echo "::group::📊 $env — outputs"
+            terraform output
+            echo "::endgroup::"
+
+            echo "::group::🧱 $env — resources in state"
+            terraform state list
+            count=$(terraform state list | wc -l | tr -d ' ')
+            echo "Total simulated resources: $count"
+            echo "::endgroup::"
+
+            echo "::group::📄 $env — generated manifest files"
+            find "../../generated/$env" -type f | sort
+            manifests=$(find "../../generated/$env" -type f | wc -l | tr -d ' ')
+            sample=$(find "../../generated/$env" -name service.json | head -1)
+            echo "--- sample manifest: $sample ---"
+            cat "$sample"
+            echo "::endgroup::"
+
+            life="apply → inspect → destroy"
+
+            # Drift-detection showcase (dev only — the platform's signature trick).
+            if [ "$env" = "dev" ]; then
+              echo "::group::🔍 $env — drift detection demo"
+              target=$(find "../../generated/$env" -name service.json | head -1)
+              echo "Tampering with a generated file by hand: $target"
+              echo '{"tampered":"by a human at 3am"}' > "$target"
+              echo "Running plan — Terraform should notice the drift:"
+              terraform plan -no-color | grep -E "will be created|Plan:" | head -5 || true
+              echo "Restoring with apply..."
+              terraform apply -auto-approve -input=false >/dev/null
+              echo "Drift restored. ✅"
+              life="apply → inspect → drift-restore → destroy"
+              echo "::endgroup::"
+            fi
+
+            echo "::group::🧹 $env — terraform destroy (leave no trace)"
+            terraform destroy -auto-approve -input=false
+            echo "::endgroup::"
+
+            echo "| \`$env\` | $count | $manifests | $life |" >> "$GITHUB_STEP_SUMMARY"
+            cd ../..
+          done
+
+          {
+            echo ""
+            echo "✅ **Demo complete.** Every resource above was simulated — nothing real was created, and nothing was billed."
+          } >> "$GITHUB_STEP_SUMMARY"
